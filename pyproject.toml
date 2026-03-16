@@ -12,7 +12,9 @@ license = { text = "Proprietary" }
 authors = [
   { name = "NULLXES LC", email = "ceo@nullxes.com" }
 ]
-dependencies = []
+dependencies = [
+  "datasets>=2.20.0",
+]
 
 [project.scripts]
 phantom-tokenizer-train = "phantom.tokenizer.cli:main"
