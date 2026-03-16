@@ -14,10 +14,12 @@ authors = [
 ]
 dependencies = [
   "datasets>=2.20.0",
+  "torch>=2.2.0",
 ]
 
 [project.scripts]
 phantom-tokenizer-train = "phantom.tokenizer.cli:main"
+phantom-train = "phantom.train.cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

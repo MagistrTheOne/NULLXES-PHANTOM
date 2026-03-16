@@ -1,0 +1,16 @@
+{
+  "run_name": "phantom-bootstrap-300-steps",
+  "model_config": "configs/model/bootstrap_small.json",
+  "tokenizer_dir": "artifacts/tokenizer/phantom_bbpe_160k",
+  "train_data_glob": "artifacts/data/first_run_smoke_v1/*.jsonl",
+  "output_dir": "artifacts/train/bootstrap_300_steps",
+  "seq_len": 128,
+  "batch_size": 8,
+  "learning_rate": 0.0003,
+  "weight_decay": 0.01,
+  "steps": 300,
+  "log_every": 10,
+  "checkpoint_every": 100,
+  "seed": 1337,
+  "device": "auto"
+}
