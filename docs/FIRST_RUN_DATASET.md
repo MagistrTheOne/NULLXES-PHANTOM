@@ -35,6 +35,18 @@ Or without editable install:
 PYTHONPATH=src python scripts/data/bootstrap_first_run.py
 ```
 
+For the safest first remote run, use the smoke config:
+
+```bash
+PYTHONPATH=src python scripts/data/bootstrap_first_run.py --config configs/data/first_run_smoke.json
+```
+
+You can also restrict sources and document counts without editing JSON:
+
+```bash
+PYTHONPATH=src python scripts/data/bootstrap_first_run.py --sources fineweb_english --max-documents 5000
+```
+
 ## Output
 
 Artifacts are written to:
@@ -56,4 +68,5 @@ Each JSONL record carries:
 - This bootstrap downloader assumes Hugging Face dataset schemas remain compatible.
 - Large sources should stay in streaming mode for the first pass.
 - `The Stack v2` often needs tighter filtering later by language, license, and repository family.
+- `Dolma` may require a different ingestion path than `datasets>=4` because some Hub layouts still rely on legacy dataset scripts.
 - Final production ingestion still needs cross-source dedup, quality scoring, and contamination checks.
