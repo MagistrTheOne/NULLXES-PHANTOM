@@ -12,7 +12,7 @@
       "split": "train",
       "text_field": "text",
       "streaming": true,
-      "max_documents": 5000,
+      "max_documents": 300,
       "weight": 1.0,
       "license_id": "odc-by"
     }
