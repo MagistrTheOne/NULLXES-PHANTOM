@@ -19,6 +19,8 @@ class TokenizerConfig:
     sample_bytes: int
     special_tokens: list[str]
     corpus_globs: list[str]
+    corpus_format: str
+    text_field: str
     output_dir: str
 
     @property

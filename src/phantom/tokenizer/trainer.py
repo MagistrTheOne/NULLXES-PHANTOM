@@ -21,20 +21,42 @@ def _load_sample_text(config: TokenizerConfig, files: list[Path]) -> str:
     chunks: list[str] = []
     consumed = 0
     for path in files:
-        text = path.read_text(encoding="utf-8", errors="ignore")
-        if config.normalize_newlines:
-            text = text.replace("\r\n", "\n").replace("\r", "\n")
-        if config.lowercase:
-            text = text.lower()
-        if consumed + len(text.encode("utf-8")) > config.sample_bytes:
-            remaining = max(config.sample_bytes - consumed, 0)
-            chunks.append(text.encode("utf-8")[:remaining].decode("utf-8", errors="ignore"))
-            break
-        chunks.append(text)
-        consumed += len(text.encode("utf-8"))
+        for text in _iter_text_units(config, path):
+            if config.normalize_newlines:
+                text = text.replace("\r\n", "\n").replace("\r", "\n")
+            if config.lowercase:
+                text = text.lower()
+            encoded = text.encode("utf-8")
+            if consumed + len(encoded) > config.sample_bytes:
+                remaining = max(config.sample_bytes - consumed, 0)
+                chunks.append(encoded[:remaining].decode("utf-8", errors="ignore"))
+                consumed = config.sample_bytes
+                break
+            chunks.append(text)
+            consumed += len(encoded)
+            if consumed >= config.sample_bytes:
+                break
         if consumed >= config.sample_bytes:
             break
     return "\n".join(chunks)
+
+
+def _iter_text_units(config: TokenizerConfig, path: Path) -> list[str]:
+    if config.corpus_format == "text":
+        return [path.read_text(encoding="utf-8", errors="ignore")]
+    if config.corpus_format == "jsonl":
+        texts: list[str] = []
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                record = json.loads(line)
+                value = record.get(config.text_field, "")
+                if value:
+                    texts.append(str(value))
+        return texts
+    raise ValueError(f"Unsupported corpus_format: {config.corpus_format}")
 
 
 def _pretokenize(text: str, pattern: str) -> list[bytes]:
@@ -97,7 +119,6 @@ def _train_bpe_merges(token_stream: list[bytes], config: TokenizerConfig) -> tup
 
 def _materialize_vocab(config: TokenizerConfig, learned_tokens: dict[bytes, int]) -> dict[str, int]:
     vocab = {f"<|byte:{idx}|>": idx for idx in range(256)}
-    base_index = 256
     for token_bytes, idx in sorted(learned_tokens.items(), key=lambda item: item[1]):
         vocab[token_bytes.decode("utf-8", errors="backslashreplace")] = idx
     next_id = max(vocab.values(), default=255) + 1

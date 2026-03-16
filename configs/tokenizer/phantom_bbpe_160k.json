@@ -25,10 +25,9 @@
     "<|fim_suffix|>"
   ],
   "corpus_globs": [
-    "manifests/corpora/bootstrap/*.txt",
-    "docs/*.md",
-    "README.md",
-    "PHANTOM_ARCHITECTURE.md"
+    "artifacts/data/first_run_smoke_v1/*.jsonl"
   ],
+  "corpus_format": "jsonl",
+  "text_field": "text",
   "output_dir": "artifacts/tokenizer/phantom_bbpe_160k"
 }
