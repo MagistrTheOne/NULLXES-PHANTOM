@@ -1,0 +1,34 @@
+{
+  "name": "PHANTOM-BBPE-160K",
+  "vocab_size": 160000,
+  "reserved_special_ids": 512,
+  "learned_token_limit": 12000,
+  "merges_limit": 12000,
+  "min_pair_count": 2,
+  "pretokenize_regex": "[A-Za-z_][A-Za-z0-9_]*|[0-9]+|\\r\\n|\\n|\\s+|[^\\w\\s]",
+  "normalize_newlines": true,
+  "lowercase": false,
+  "sample_bytes": 4000000,
+  "special_tokens": [
+    "<|pad|>",
+    "<|bos|>",
+    "<|eos|>",
+    "<|unk_byte_fallback|>",
+    "<|system|>",
+    "<|user|>",
+    "<|assistant|>",
+    "<|tool|>",
+    "<|tool_call|>",
+    "<|tool_result|>",
+    "<|fim_prefix|>",
+    "<|fim_middle|>",
+    "<|fim_suffix|>"
+  ],
+  "corpus_globs": [
+    "manifests/corpora/bootstrap/*.txt",
+    "docs/*.md",
+    "README.md",
+    "PHANTOM_ARCHITECTURE.md"
+  ],
+  "output_dir": "artifacts/tokenizer/phantom_bbpe_160k"
+}

@@ -1,0 +1,12 @@
+services:
+  phantom-bootstrap:
+    image: python:3.11-slim
+    working_dir: /workspace
+    command: >
+      sh -c "pip install -e . &&
+      python scripts/tokenizer/train.py &&
+      python scripts/serve/bootstrap_runtime.py"
+    volumes:
+      - ../../:/workspace
+    environment:
+      PHANTOM_ENV: bootstrap

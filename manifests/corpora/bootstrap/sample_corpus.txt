@@ -1,0 +1,5 @@
+PHANTOM is a from-scratch foundation model program.
+The flagship targets strong performance in code, math, long-form reasoning, and technical instruction following.
+Tokenizer training should preserve whitespace, indentation, JSON, XML, Markdown, URLs, SQL, file paths, and stack traces.
+The model weights, tokenizer vocabulary, merges, and training data are owned and produced in-house.
+Long-context stages should progress from 4K to 32K, then 128K and 256K.
