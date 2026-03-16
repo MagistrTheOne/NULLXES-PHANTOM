@@ -50,15 +50,21 @@ def run_training(config: TrainConfig) -> dict[str, object]:
     for step in range(1, config.steps + 1):
         model.train()
         x, y = dataset.sample_batch(batch_size=config.batch_size, device=device)
-        _, loss = model(x, labels=y)
-        assert loss is not None
+        _, lm_loss, aux_loss = model(x, labels=y)
+        assert lm_loss is not None
+        loss = lm_loss + aux_loss
 
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
 
         if step % config.log_every == 0 or step == 1 or step == config.steps:
-            entry = {"step": step, "loss": float(loss.item())}
+            entry = {
+                "step": step,
+                "loss": float(loss.item()),
+                "lm_loss": float(lm_loss.item()),
+                "aux_loss": float(aux_loss.item()),
+            }
             logs.append(entry)
             print(json.dumps(entry, ensure_ascii=True))
 

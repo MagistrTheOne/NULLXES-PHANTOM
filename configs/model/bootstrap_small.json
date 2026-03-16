@@ -5,5 +5,8 @@
   "n_heads": 8,
   "n_layers": 6,
   "mlp_ratio": 4.0,
-  "dropout": 0.1
+  "dropout": 0.1,
+  "num_experts": 8,
+  "experts_per_token": 2,
+  "aux_loss_coef": 0.01
 }

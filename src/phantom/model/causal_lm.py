@@ -6,6 +6,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from phantom.moe import MoELayer
+
 from .config import ModelConfig
 
 
@@ -38,33 +40,25 @@ class CausalSelfAttention(nn.Module):
         return self.out_proj(y)
 
 
-class FeedForward(nn.Module):
-    def __init__(self, config: ModelConfig) -> None:
-        super().__init__()
-        hidden = int(config.d_model * config.mlp_ratio)
-        self.net = nn.Sequential(
-            nn.Linear(config.d_model, hidden),
-            nn.GELU(),
-            nn.Linear(hidden, config.d_model),
-            nn.Dropout(config.dropout),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)
-
-
 class TransformerBlock(nn.Module):
     def __init__(self, config: ModelConfig) -> None:
         super().__init__()
         self.ln1 = nn.LayerNorm(config.d_model)
         self.attn = CausalSelfAttention(config)
         self.ln2 = nn.LayerNorm(config.d_model)
-        self.ffn = FeedForward(config)
+        self.moe = MoELayer(
+            d_model=config.d_model,
+            expert_hidden_size=int(config.d_model * config.mlp_ratio),
+            num_experts=config.num_experts,
+            top_k=config.experts_per_token,
+            dropout=config.dropout,
+        )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         x = x + self.attn(self.ln1(x))
-        x = x + self.ffn(self.ln2(x))
-        return x
+        moe_out, aux_loss = self.moe(self.ln2(x))
+        x = x + moe_out
+        return x, aux_loss
 
 
 class PhantomCausalLM(nn.Module):
@@ -78,17 +72,23 @@ class PhantomCausalLM(nn.Module):
         self.ln_f = nn.LayerNorm(config.d_model)
         self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
 
-    def forward(self, input_ids: torch.Tensor, labels: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor | None]:
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        labels: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None, torch.Tensor]:
         batch, seq_len = input_ids.shape
         positions = torch.arange(seq_len, device=input_ids.device).unsqueeze(0)
         x = self.token_emb(input_ids) + self.pos_emb(positions)
         x = self.dropout(x)
+        aux_loss = torch.zeros((), device=input_ids.device)
         for block in self.blocks:
-            x = block(x)
+            x, block_aux = block(x)
+            aux_loss = aux_loss + block_aux
         x = self.ln_f(x)
         logits = self.lm_head(x)
 
         loss = None
         if labels is not None:
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1))
-        return logits, loss
+        return logits, loss, aux_loss * self.config.aux_loss_coef

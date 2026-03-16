@@ -2,7 +2,7 @@
 
 ## Scope
 
-This is the first real training stack for PHANTOM bootstrap runs. It trains a small causal LM on your own downloaded corpus and your own tokenizer artifacts.
+This is the first real training stack for PHANTOM bootstrap runs. It trains a small causal LM with sparse MoE feed-forward layers on your own downloaded corpus and your own tokenizer artifacts.
 
 It is not the flagship architecture. It exists to validate:
 
@@ -10,6 +10,7 @@ It is not the flagship architecture. It exists to validate:
 - corpus tokenization
 - packed next-token batches
 - forward/backward/optimizer flow
+- router, experts, dispatch, and load-balancing loss
 - checkpoint writing
 
 ## Prerequisites
@@ -34,6 +35,6 @@ PYTHONPATH=src python scripts/train/run_bootstrap.py
 
 ## Notes
 
-- This run uses a small causal LM in `configs/model/bootstrap_small.json`.
+- This run uses a small causal LM with MoE FFN blocks in `configs/model/bootstrap_small.json`.
 - The objective is standard next-token prediction on your own data.
 - The weights are fully your own bootstrap weights.

@@ -14,6 +14,9 @@ class ModelConfig:
     n_layers: int
     mlp_ratio: float
     dropout: float
+    num_experts: int
+    experts_per_token: int
+    aux_loss_coef: float
 
 
 def load_model_config(path: str | Path) -> ModelConfig:
