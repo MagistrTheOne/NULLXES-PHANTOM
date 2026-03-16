@@ -17,15 +17,27 @@
       "license_id": "odc-by"
     },
     {
-      "source_id": "fineweb2_multilingual",
+      "source_id": "fineweb2_english",
       "family": "multilingual_text",
       "dataset": "HuggingFaceFW/fineweb-2",
-      "config": "default",
+      "config": "eng_Latn",
       "split": "train",
       "text_field": "text",
       "streaming": true,
-      "max_documents": 4000,
-      "weight": 0.3,
+      "max_documents": 3000,
+      "weight": 0.2,
+      "license_id": "odc-by"
+    },
+    {
+      "source_id": "fineweb2_russian",
+      "family": "multilingual_text",
+      "dataset": "HuggingFaceFW/fineweb-2",
+      "config": "rus_Cyrl",
+      "split": "train",
+      "text_field": "text",
+      "streaming": true,
+      "max_documents": 1000,
+      "weight": 0.1,
       "license_id": "odc-by"
     }
   ]

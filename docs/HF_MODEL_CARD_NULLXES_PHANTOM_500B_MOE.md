@@ -1,7 +1,7 @@
 ---
 language:
   - en
-license: proprietary
+license: other
 library_name: pytorch
 pipeline_tag: text-generation
 tags:
@@ -15,7 +15,7 @@ model_type: custom
 datasets:
   - HuggingFaceFW/fineweb
   - HuggingFaceFW/fineweb-2
-base_model: null
+base_model: "none"
 ---
 
 # NULLXES-PHANTOM-500B-MoE
