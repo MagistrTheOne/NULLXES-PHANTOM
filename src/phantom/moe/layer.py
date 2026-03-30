@@ -1,49 +1,54 @@
 from __future__ import annotations
 
 import torch
-from torch import nn
+import torch.nn as nn
 
-from .experts import SwiGLUExpert
-from .router import TopKRouter
+from phantom.moe.experts import SwiGLUExpert
+from phantom.moe.router import MoERouter
+from phantom.model.config import ModelConfig
 
 
 class MoELayer(nn.Module):
-    def __init__(
-        self,
-        d_model: int,
-        expert_hidden_size: int,
-        num_experts: int,
-        top_k: int,
-        dropout: float,
-    ) -> None:
+    """
+    Routed MoE FFN + optional shared expert(s).
+
+    Naive token dispatch for correctness; replace with EP + grouped GEMM at scale
+    (see `phantom.scale_notes`).
+    """
+
+    def __init__(self, config: ModelConfig) -> None:
         super().__init__()
-        self.num_experts = num_experts
-        self.top_k = top_k
-        self.router = TopKRouter(d_model=d_model, num_experts=num_experts, top_k=top_k)
-        self.experts = nn.ModuleList(
-            [SwiGLUExpert(d_model=d_model, hidden_size=expert_hidden_size, dropout=dropout) for _ in range(num_experts)]
+        self.config = config
+        e = config.num_routed_experts
+        k = config.num_experts_per_tok
+        h = config.hidden_size
+        inter = config.ffn_intermediate
+        self.router = MoERouter(h, e, k)
+        self.experts = nn.ModuleList(SwiGLUExpert(h, inter) for _ in range(e))
+        self.shared_experts = nn.ModuleList(
+            SwiGLUExpert(h, inter) for _ in range(config.num_shared_experts)
         )
+        self._last_top_indices: torch.Tensor | None = None
+        self._last_full_scores: torch.Tensor | None = None
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        batch, seq_len, d_model = x.shape
-        flat_x = x.reshape(batch * seq_len, d_model)
-        _, probs, topk_indices, topk_weights = self.router(flat_x)
-
-        output = torch.zeros_like(flat_x)
-        token_count = flat_x.size(0)
-
-        for expert_idx, expert in enumerate(self.experts):
-            expert_out = expert(flat_x)
-            selection_mask = topk_indices == expert_idx
-            if not selection_mask.any():
-                continue
-            combine_weights = (topk_weights * selection_mask.to(topk_weights.dtype)).sum(dim=-1, keepdim=True)
-            output = output + expert_out * combine_weights
-
-        expert_usage = torch.zeros(self.num_experts, device=x.device, dtype=flat_x.dtype)
-        for expert_idx in range(self.num_experts):
-            expert_usage[expert_idx] = (topk_indices == expert_idx).any(dim=-1).to(flat_x.dtype).mean()
-        expert_prob_mass = probs.mean(dim=0)
-        aux_loss = self.num_experts * torch.sum(expert_usage * expert_prob_mass)
-
-        return output.view(batch, seq_len, d_model), aux_loss
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        b, t, h = x.shape
+        flat = x.reshape(b * t, h)
+        w, idx, full_scores = self.router.forward_route(flat)
+        out = torch.zeros_like(flat)
+        k = self.config.num_experts_per_tok
+        for j in range(k):
+            e_ids = idx[:, j]
+            wt = w[:, j]
+            for e in range(self.config.num_routed_experts):
+                m = e_ids == e
+                if not m.any():
+                    continue
+                y = self.experts[e](flat[m])
+                out[m] = out[m] + (wt[m, None] * y)
+        for se in self.shared_experts:
+            out = out + se(flat)
+        out = out.view(b, t, h)
+        self._last_top_indices = idx.detach()
+        self._last_full_scores = full_scores.detach()
+        return out

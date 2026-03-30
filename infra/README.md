@@ -1,5 +1,3 @@
-# Infrastructure
+# infra
 
-This directory is for storage, orchestration, and serving definitions.
-
-Keep runtime topology here instead of coupling it to model code.
+Cluster orchestration (Slurm/Kubernetes), NCCL env, and serving images will live here. Training math stays in `src/phantom/`.

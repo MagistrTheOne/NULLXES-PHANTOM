@@ -1,5 +1,3 @@
-"""PHANTOM bootstrap package."""
-
-__all__ = ["__version__"]
+"""NULLXES PHANTOM: from-scratch MoE + MLA foundation model stack."""
 
 __version__ = "0.1.0"

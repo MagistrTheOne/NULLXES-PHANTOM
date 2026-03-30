@@ -1,20 +1,18 @@
 from __future__ import annotations
 
 import argparse
-import json
+from pathlib import Path
 
-from .config import load_train_config
-from .loop import run_training
+from phantom.train.config import TrainConfig
+from phantom.train.loop import run_smoke_training
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run PHANTOM bootstrap LM training.")
-    parser.add_argument("--config", default="configs/train/bootstrap_300_steps.json", help="Path to train config.")
-    args = parser.parse_args()
-
-    config = load_train_config(args.config)
-    summary = run_training(config)
-    print(json.dumps(summary, indent=2, ensure_ascii=True))
+    p = argparse.ArgumentParser(description="PHANTOM pretrain loop (smoke / bootstrap).")
+    p.add_argument("--config", type=str, required=True, help="Train JSON (see configs/train/).")
+    args = p.parse_args()
+    cfg = TrainConfig.from_json_file(args.config)
+    run_smoke_training(cfg)
 
 
 if __name__ == "__main__":

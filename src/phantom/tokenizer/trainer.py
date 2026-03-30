@@ -1,170 +1,142 @@
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import asdict
-import hashlib
 import json
-import re
+from collections import Counter, defaultdict
 from pathlib import Path
+from typing import Iterable
 
-from .config import TokenizerConfig
+from phantom.tokenizer.config import TokenizerTrainConfig
 
+try:
+    import regex
 
-def _iter_corpus_files(config: TokenizerConfig) -> list[Path]:
-    files: list[Path] = []
-    for pattern in config.corpus_globs:
-        files.extend(Path().glob(pattern))
-    return sorted(path for path in files if path.is_file())
+    _HAS_REGEX = True
+except ImportError:
+    _HAS_REGEX = False
 
+import re as std_re
 
-def _load_sample_text(config: TokenizerConfig, files: list[Path]) -> str:
-    chunks: list[str] = []
-    consumed = 0
-    for path in files:
-        for text in _iter_text_units(config, path):
-            if config.normalize_newlines:
-                text = text.replace("\r\n", "\n").replace("\r", "\n")
-            if config.lowercase:
-                text = text.lower()
-            encoded = text.encode("utf-8")
-            if consumed + len(encoded) > config.sample_bytes:
-                remaining = max(config.sample_bytes - consumed, 0)
-                chunks.append(encoded[:remaining].decode("utf-8", errors="ignore"))
-                consumed = config.sample_bytes
-                break
-            chunks.append(text)
-            consumed += len(encoded)
-            if consumed >= config.sample_bytes:
-                break
-        if consumed >= config.sample_bytes:
-            break
-    return "\n".join(chunks)
+_GPT2_SPLIT = std_re.compile(
+    r"""'s|'t|'re|'ve|'m|'ll|'d| ?\w+| ?[^\s\w]+|\s+(?!\S)|\s+"""
+)
 
 
-def _iter_text_units(config: TokenizerConfig, path: Path) -> list[str]:
-    if config.corpus_format == "text":
-        return [path.read_text(encoding="utf-8", errors="ignore")]
-    if config.corpus_format == "jsonl":
-        texts: list[str] = []
-        with path.open("r", encoding="utf-8", errors="ignore") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                record = json.loads(line)
-                value = record.get(config.text_field, "")
-                if value:
-                    texts.append(str(value))
-        return texts
-    raise ValueError(f"Unsupported corpus_format: {config.corpus_format}")
+def _pretokenize_line(line: str, mode: str) -> list[str]:
+    line = line.rstrip("\n")
+    if mode == "gpt2_regex":
+        if _HAS_REGEX:
+            return regex.findall(
+                r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""",
+                line,
+            )
+        return _GPT2_SPLIT.findall(line)
+    if mode == "whitespace":
+        return line.split()
+    raise ValueError(f"unknown pretokenizer: {mode}")
 
 
-def _pretokenize(text: str, pattern: str) -> list[bytes]:
-    tokens: list[bytes] = []
-    regex = re.compile(pattern)
-    for match in regex.finditer(text):
-        piece = match.group(0)
-        if piece:
-            tokens.append(piece.encode("utf-8"))
-    return tokens
+def _pair_counts(words: dict[tuple[int, ...], int]) -> Counter[tuple[int, int]]:
+    counts: Counter[tuple[int, int]] = Counter()
+    for word, freq in words.items():
+        if len(word) < 2:
+            continue
+        for i in range(len(word) - 1):
+            counts[(word[i], word[i + 1])] += freq
+    return counts
 
 
-def _train_bpe_merges(token_stream: list[bytes], config: TokenizerConfig) -> tuple[list[tuple[int, int]], dict[bytes, int]]:
-    words = [list(token) for token in token_stream if token]
-    vocab_counter: Counter[bytes] = Counter(token_stream)
+def _merge_words(
+    words: dict[tuple[int, ...], int],
+    pair: tuple[int, int],
+    new_id: int,
+) -> dict[tuple[int, ...], int]:
+    first, second = pair
+    new_words: dict[tuple[int, ...], int] = defaultdict(int)
+    for word, freq in words.items():
+        if len(word) < 2:
+            new_words[word] += freq
+            continue
+        i = 0
+        merged: list[int] = []
+        while i < len(word):
+            if i < len(word) - 1 and word[i] == first and word[i + 1] == second:
+                merged.append(new_id)
+                i += 2
+            else:
+                merged.append(word[i])
+                i += 1
+        new_words[tuple(merged)] += freq
+    return dict(new_words)
+
+
+def build_id_to_bytes(merges: list[tuple[int, int]]) -> dict[int, bytes]:
+    id_to: dict[int, bytes] = {i: bytes([i]) for i in range(256)}
+    for i, (a, b) in enumerate(merges):
+        new_id = 256 + i
+        id_to[new_id] = id_to[a] + id_to[b]
+    return id_to
+
+
+def train_bbpe(
+    text_iter: Iterable[str],
+    train_cfg: TokenizerTrainConfig,
+) -> dict:
+    """
+    Byte-level BPE: ids 0..255 are raw bytes. Each merge introduces id 256.. until
+    `max_learned_tokens - 1` (last `num_reserved_special_tokens` ids stay unused for specials).
+    """
+    max_learned = train_cfg.max_learned_tokens
+    if max_learned < 256:
+        raise ValueError("vocab_size - reserved must be >= 256 for byte foundation")
+
+    words: dict[tuple[int, ...], int] = defaultdict(int)
+    for chunk in text_iter:
+        for piece in _pretokenize_line(chunk, train_cfg.pretokenizer):
+            if not piece:
+                continue
+            b = tuple(bt for bt in piece.encode("utf-8"))
+            if not b:
+                continue
+            words[b] += 1
+
     merges: list[tuple[int, int]] = []
-    token_to_id: dict[bytes, int] = {bytes([idx]): idx for idx in range(256)}
-    id_to_token: dict[int, bytes] = {idx: bytes([idx]) for idx in range(256)}
-
     next_id = 256
-    target_vocab = min(config.vocab_size - len(config.special_tokens), 256 + config.learned_token_limit)
-
-    while next_id < target_vocab and len(merges) < config.merges_limit:
-        pair_counts: Counter[tuple[int, int]] = Counter()
-        for word in words:
-            for left, right in zip(word, word[1:]):
-                pair_counts[(left, right)] += 1
-        if not pair_counts:
+    while next_id < max_learned:
+        counts = _pair_counts(words)
+        if not counts:
             break
-        (best_left, best_right), count = pair_counts.most_common(1)[0]
-        if count < config.min_pair_count:
-            break
-
-        merged_bytes = id_to_token[best_left] + id_to_token[best_right]
-        token_to_id[merged_bytes] = next_id
-        id_to_token[next_id] = merged_bytes
-        merges.append((best_left, best_right))
-
-        replacement_id = next_id
+        pair = counts.most_common(1)[0][0]
+        merges.append(pair)
+        words = _merge_words(words, pair, next_id)
         next_id += 1
-        updated_words: list[list[int]] = []
-        for word in words:
-            merged_word: list[int] = []
-            index = 0
-            while index < len(word):
-                if index + 1 < len(word) and word[index] == best_left and word[index + 1] == best_right:
-                    merged_word.append(replacement_id)
-                    index += 2
-                else:
-                    merged_word.append(word[index])
-                    index += 1
-            updated_words.append(merged_word)
-        words = updated_words
 
-    learned_tokens = {token: idx for token, idx in token_to_id.items() if idx >= 256}
-    if vocab_counter:
-        _ = vocab_counter.most_common(1)[0]
-    return merges, learned_tokens
-
-
-def _materialize_vocab(config: TokenizerConfig, learned_tokens: dict[bytes, int]) -> dict[str, int]:
-    vocab = {f"<|byte:{idx}|>": idx for idx in range(256)}
-    for token_bytes, idx in sorted(learned_tokens.items(), key=lambda item: item[1]):
-        vocab[token_bytes.decode("utf-8", errors="backslashreplace")] = idx
-    next_id = max(vocab.values(), default=255) + 1
-    for token in config.special_tokens:
-        if token not in vocab:
-            vocab[token] = next_id
-            next_id += 1
-    return vocab
-
-
-def train_tokenizer(config: TokenizerConfig) -> dict[str, object]:
-    files = _iter_corpus_files(config)
-    if not files:
-        raise FileNotFoundError("No corpus files matched the configured globs.")
-
-    text = _load_sample_text(config, files)
-    token_stream = _pretokenize(text, config.pretokenize_regex)
-    merges, learned_tokens = _train_bpe_merges(token_stream, config)
-    vocab = _materialize_vocab(config, learned_tokens)
-
-    output_dir = Path(config.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    metadata = {
-        "config": asdict(config),
-        "matched_files": [str(path) for path in files],
-        "sample_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
-        "pretoken_count": len(token_stream),
-        "merge_count": len(merges),
-        "vocab_size": len(vocab),
+    id_to_bytes = {str(i): list(b) for i, b in build_id_to_bytes(merges).items()}
+    return {
+        "version": 1,
+        "vocab_size": train_cfg.vocab_size,
+        "num_reserved_special_tokens": train_cfg.num_reserved_special_tokens,
+        "merges": [[int(a), int(b)] for a, b in merges],
+        "id_to_token_bytes": id_to_bytes,
+        "pretokenizer": train_cfg.pretokenizer,
     }
 
-    (output_dir / "tokenizer_config.json").write_text(
-        json.dumps(metadata["config"], indent=2, ensure_ascii=True),
-        encoding="utf-8",
-    )
-    (output_dir / "vocab.json").write_text(
-        json.dumps(vocab, indent=2, ensure_ascii=True),
-        encoding="utf-8",
-    )
-    (output_dir / "merges.txt").write_text(
-        "\n".join(f"{left} {right}" for left, right in merges),
-        encoding="utf-8",
-    )
-    (output_dir / "metadata.json").write_text(
-        json.dumps(metadata, indent=2, ensure_ascii=True),
-        encoding="utf-8",
-    )
-    return metadata
+
+def save_tokenizer_json(payload: dict, path: str | Path) -> None:
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
+def iter_files(paths: tuple[str, ...]) -> Iterable[str]:
+    for raw in paths:
+        p = Path(raw)
+        if p.is_file():
+            with p.open("r", encoding="utf-8", errors="replace") as f:
+                yield from f
+        elif p.is_dir():
+            for fp in sorted(p.rglob("*.txt")):
+                with fp.open("r", encoding="utf-8", errors="replace") as f:
+                    yield from f
+        else:
+            raise FileNotFoundError(raw)

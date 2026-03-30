@@ -1,33 +1,36 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 
-@dataclass(slots=True)
-class TokenizerConfig:
-    name: str
-    vocab_size: int
-    reserved_special_ids: int
-    learned_token_limit: int
-    merges_limit: int
-    min_pair_count: int
-    pretokenize_regex: str
-    normalize_newlines: bool
-    lowercase: bool
-    sample_bytes: int
-    special_tokens: list[str]
-    corpus_globs: list[str]
-    corpus_format: str
-    text_field: str
-    output_dir: str
+@dataclass
+class TokenizerTrainConfig:
+    vocab_size: int = 160_000
+    num_reserved_special_tokens: int = 512
+    input_paths: tuple[str, ...] = ()
+    pretokenizer: str = "gpt2_regex"
 
     @property
-    def byte_vocab_size(self) -> int:
-        return 256
+    def max_learned_tokens(self) -> int:
+        return self.vocab_size - self.num_reserved_special_tokens
 
+    @classmethod
+    def from_json_file(cls, path: str | Path) -> TokenizerTrainConfig:
+        with Path(path).open("r", encoding="utf-8") as f:
+            data: dict[str, Any] = json.load(f)
+        input_paths = tuple(data.get("input_paths") or ())
+        known = {
+            "vocab_size",
+            "num_reserved_special_tokens",
+            "pretokenizer",
+        }
+        core = {k: data[k] for k in data if k in known}
+        return cls(input_paths=input_paths, **core)
 
-def load_config(path: str | Path) -> TokenizerConfig:
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
-    return TokenizerConfig(**data)
+    def to_dict(self) -> dict[str, Any]:
+        d = asdict(self)
+        d["input_paths"] = list(self.input_paths)
+        return d

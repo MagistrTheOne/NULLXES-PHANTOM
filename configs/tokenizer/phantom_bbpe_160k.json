@@ -1,33 +1,6 @@
 {
-  "name": "PHANTOM-BBPE-160K",
+  "tokenizer_type": "phantom_bbpe",
   "vocab_size": 160000,
-  "reserved_special_ids": 512,
-  "learned_token_limit": 1000,
-  "merges_limit": 1000,
-  "min_pair_count": 2,
-  "pretokenize_regex": "[A-Za-z_][A-Za-z0-9_]*|[0-9]+|\\r\\n|\\n|\\s+|[^\\w\\s]",
-  "normalize_newlines": true,
-  "lowercase": false,
-  "sample_bytes": 120000,
-  "special_tokens": [
-    "<|pad|>",
-    "<|bos|>",
-    "<|eos|>",
-    "<|unk_byte_fallback|>",
-    "<|system|>",
-    "<|user|>",
-    "<|assistant|>",
-    "<|tool|>",
-    "<|tool_call|>",
-    "<|tool_result|>",
-    "<|fim_prefix|>",
-    "<|fim_middle|>",
-    "<|fim_suffix|>"
-  ],
-  "corpus_globs": [
-    "artifacts/data/first_run_smoke_v1/*.jsonl"
-  ],
-  "corpus_format": "jsonl",
-  "text_field": "text",
-  "output_dir": "artifacts/tokenizer/phantom_bbpe_160k"
+  "num_reserved_special_tokens": 512,
+  "learned_token_count": 159488
 }

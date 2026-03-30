@@ -27,4 +27,4 @@ Top-level directories:
 - `tests/`: smoke and integration coverage
 - `infra/`: storage, orchestration, and serving infrastructure definitions
 
-No training code is committed yet by design. The next stage is to turn the architecture and data specs into executable configs, manifests, and implementation modules.
+Executable stack (tokenizer, MLA+MoE model, smoke pretrain loop) lives under `src/phantom/` and `configs/`. Run `python -m phantom.train.cli --config configs/train/bootstrap_smoke.json` from the repo root for a synthetic-data smoke.

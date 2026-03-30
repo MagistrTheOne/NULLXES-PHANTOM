@@ -1,5 +1,4 @@
-"""Data bootstrap helpers for PHANTOM."""
+from phantom.data.config import DataManifestConfig
+from phantom.data.dataset import ManifestTextDataset, SyntheticTokenDataset
 
-from .config import DataBootstrapConfig, load_data_config
-
-__all__ = ["DataBootstrapConfig", "load_data_config"]
+__all__ = ["DataManifestConfig", "ManifestTextDataset", "SyntheticTokenDataset"]

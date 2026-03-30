@@ -1,5 +1,4 @@
-from .cli import main
-from .config import TrainConfig, load_train_config
-from .loop import run_training
+from phantom.train.config import TrainConfig
+from phantom.train.loop import pretrain_one_step, run_smoke_training
 
-__all__ = ["main", "TrainConfig", "load_train_config", "run_training"]
+__all__ = ["TrainConfig", "pretrain_one_step", "run_smoke_training"]
